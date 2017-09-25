@@ -1,18 +1,3 @@
-/*
-* selectserver.c - A TCP echo server that keeps track of the
-        *                  number of connection requests and allows
-        *                  the user to query this count and to terminate
-*                  the server from stdin. It multiplexes two different
-*                  kinds of events:
-*                     1. the user has hit the return key
-*                     2. a connection request has arrived
-        *
-        * usage: tcpserver <port>
-        *
-        * commands from stdin:
-*   "c<nl>"  print the number of connection requests
-*   "q<nl>"  quit the server
-*/
 #include <sys/stat.h>
 #include <string.h>
 #include <stdio.h>
@@ -34,12 +19,14 @@
 #include <pthread.h>
 #include <sys/wait.h>
 #include <stdlib.h>
+#include <time.h>
+
 
 #define ISspace(x) isspace((int)(x))
 #include <arpa/inet.h>
 
 #define BUFSIZE 1024
-#define PORT 9999
+#define PORT "9999"
 #define SERVER_STRING "Server: Liso/1.0 \r\n"
 
 void accept_request(int);
@@ -57,6 +44,8 @@ void unimplemented(int);
 void error(char *msg);
 char *get_filename_ext(const char *);
 char * getType(char *);
+void get_time(char *date);
+
 /*
  * error - wrapper for perror
  */
@@ -267,6 +256,8 @@ void accept_request(int client)
     struct stat st;
     int cgi = 0;      /* becomes true if server decides this is a CGI
                     * program */
+
+//    echo(client);
     char *query_string = NULL;
     numchars = get_line(client, buf, sizeof(buf));
     i = 0; j = 0;
@@ -285,10 +276,23 @@ void accept_request(int client)
     }
     if (strcasecmp(method, "POST") == 0){
         fprintf(stdout,"RECEIVED A %s\n",method);
-        fprintf(stdout, "url: %s\n ",url);
 
-        cgi = 1;
-        unimplemented(client);
+//        cgi = 1;
+
+        char buff[BUFSIZE];
+        char date[BUFSIZE];
+
+        get_time(date);
+
+        sprintf(buff, "HTTP/1.1 200 No Content\r\n");
+        sprintf(buff, "%sServer: Liso/1.0\r\n", buff);
+        sprintf(buff, "%sDate: %s\r\n", buff, date);
+//        sprintf(buff, "Connection: keep alive\r\n");
+//        if (!context->keep_alive) sprintf(buff, "%sConnection: close\r\n", buff);
+        sprintf(buff, "%sContent-Length: 0\r\n", buff);
+        sprintf(buff, "%sContent-Type: text/html\r\n\r\n", buff);
+        send(client, buff, strlen(buff), 0);
+
         return;
     }
     i = 0;
@@ -316,7 +320,7 @@ void accept_request(int client)
             query_string++;
         }
     }
-	fprintf(stdout,"%s\n",url);
+    fprintf(stdout,"%s\n",url);
     sprintf(path, "htdocs%s", url);
     if (path[strlen(path) - 1] == '/')
         strcat(path, "index.html");
@@ -379,135 +383,157 @@ int get_line(int sock, char *buf, int size)
     return(i);
 }
 
-int main(int argc, char **argv) {
-    int parentfd; /* parent socket */
-    int childfd; /* child socket */
-    int portno; /* port to listen on */
-    int clientlen; /* byte size of client's address */
-    struct sockaddr_in serveraddr; /* server's addr */
-    struct sockaddr_in clientaddr; /* client addr */
-    char buf[BUFSIZE]; /* message buffer */
-    int optval; /* flag value for setsockopt */
-    int n; /* message byte size */
-    int connectcnt; /* number of connection requests */
-    int notdone;
-    fd_set readfds;
+void get_time(char *date)
+{
+    struct tm tm;
+    time_t now;
+    now = time(0);
+    tm = *gmtime(&now);
+    strftime(date, BUFSIZE, "%a, %d %b %Y %H:%M:%S GMT", &tm);
+}
 
-
-    portno = atoi(argv[1]);
-
-    /*
-     * socket: create the parent socket
-     */
-    parentfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (parentfd < 0)
-        error("ERROR opening socket");
-
-    /* setsockopt: Handy debugging trick that lets
-     * us rerun the server immediately after we kill it;
-     * otherwise we have to wait about 20 secs.
-     * Eliminates "ERROR on binding: Address already in use" error.
-     */
-    optval = 1;
-    setsockopt(parentfd, SOL_SOCKET, SO_REUSEADDR,
-               (const void *)&optval , sizeof(int));
-
-    /*
-     * build the server's Internet address
-     */
-    bzero((char *) &serveraddr, sizeof(serveraddr));
-
-    /* this is an Internet address */
-    serveraddr.sin_family = AF_INET;
-
-    /* let the system figure out our IP address */
-    serveraddr.sin_addr.s_addr = htonl(INADDR_ANY);
-
-    /* this is the port we will listen on */
-    serveraddr.sin_port = htons((unsigned short)portno);
-
-    /*
-     * bind: associate the parent socket with a port
-     */
-    if (bind(parentfd, (struct sockaddr *) &serveraddr,
-             sizeof(serveraddr)) < 0)
-        error("ERROR on binding");
-
-    /*
-     * listen: make this socket ready to accept connection requests
-     */
-    if (listen(parentfd, 5) < 0) /* allow 5 requests to queue up */
-        error("ERROR on listen");
-
-
-    /* initialize some things for the main loop */
-    clientlen = sizeof(clientaddr);
-    notdone = 1;
-    connectcnt = 0;
-    printf("server> ");
-    fflush(stdout);
-
-    /*
-     * main loop: wait for connection request or stdin command.
-     *
-     * If connection request, then echo input line
-     * and close connection.
-     * If command, then process command.
-     */
-    fprintf(stdout,"I---------SERVER LISTENING ON %d -------------I\n",portno);
-    while (notdone) {
-
-        /*
-         * select: Has the user typed something to stdin or
-         * has a connection request arrived?
-         */
-        FD_ZERO(&readfds);          /* initialize the fd set */
-        FD_SET(parentfd, &readfds); /* add socket fd */
-        FD_SET(0, &readfds);        /* add stdin fd (0) */
-        if (select(parentfd+1, &readfds, 0, 0, 0) < 0) {
-            error("ERROR in select");
-        }
-
-        /* if the user has entered a command, process it */
-        if (FD_ISSET(0, &readfds)) {
-
-            fgets(buf, BUFSIZE, stdin);
-            switch (buf[0]) {
-                case 'c': /* print the connection cnt */
-                    printf("Received %d connection requests so far.\n", connectcnt);
-                    printf("server> ");
-                    fflush(stdout);
-                    break;
-                case 'q': /* terminate the server */
-                    notdone = 0;
-                    break;
-                default: /* bad input */
-                    printf("ERROR: unknown command\n");
-                    printf("server> ");
-                    fflush(stdout);
-            }
-        }
-
-        /* if a connection request has arrived, process it */
-        if (FD_ISSET(parentfd, &readfds)) {
-            /*
-             * accept: wait for a connection request
-             */
-            childfd = accept(parentfd,
-                             (struct sockaddr *) &clientaddr, &clientlen);
-            accept_request(childfd);
-            if (childfd < 0)
-                error("ERROR on accept");
-            connectcnt++;
-
-
-
-            close(childfd);
-        }
+void *get_in_addr(struct sockaddr *sa)
+{
+    if (sa->sa_family == AF_INET) {
+        return &(((struct sockaddr_in*)sa)->sin_addr);
     }
 
-    /* clean up */
-    printf("Terminating server.\n");
-    close(parentfd);
-    exit(0);
+    return &(((struct sockaddr_in6*)sa)->sin6_addr);
+}
+
+int main(int argc, char **argv)
+{
+
+
+    char *portnum;
+    portnum = argv[1];
+
+    fd_set master;    // master file descriptor list
+    fd_set read_fds;  // temp file descriptor list for select()
+    int fdmax;        // maximum file descriptor number
+
+    int listener;     // listening socket descriptor
+    int newfd;        // newly accept()ed socket descriptor
+    struct sockaddr_storage remoteaddr; // client address
+    socklen_t addrlen;
+
+    char buf[256];    // buffer for client data
+    int nbytes;
+
+    char remoteIP[INET6_ADDRSTRLEN];
+
+    int yes=1;        // for setsockopt() SO_REUSEADDR, below
+    int i, j, rv;
+
+    struct addrinfo hints, *ai, *p;
+
+    FD_ZERO(&master);    // clear the master and temp sets
+    FD_ZERO(&read_fds);
+
+    // get us a socket and bind it
+    memset(&hints, 0, sizeof hints);
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = AI_PASSIVE;
+    if ((rv = getaddrinfo(NULL, portnum, &hints, &ai)) != 0) {
+        fprintf(stderr, "selectserver: %s\n", gai_strerror(rv));
+        exit(1);
+    }
+
+
+    for(p = ai; p != NULL; p = p->ai_next) {
+        listener = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+        if (listener < 0) {
+            continue;
+        }
+
+        // lose the pesky "address already in use" error message
+        setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
+
+        if (bind(listener, p->ai_addr, p->ai_addrlen) < 0) {
+            close(listener);
+            continue;
+        }
+
+        break;
+    }
+
+    // if we got here, it means we didn't get bound
+    if (p == NULL) {
+        fprintf(stderr, "selectserver: failed to bind\n");
+        exit(2);
+    }
+
+    freeaddrinfo(ai); // all done with this
+
+    // listen
+    if (listen(listener, 10) == -1) {
+        perror("listen");
+        exit(3);
+    }
+
+    // add the listener to the master set
+    FD_SET(listener, &master);
+
+    // keep track of the biggest file descriptor
+    fdmax = listener; // so far, it's this one
+
+    // main loop
+    for(;;) {
+        read_fds = master; // copy it
+        if (select(fdmax+1, &read_fds, NULL, NULL, NULL) == -1) {
+            perror("select");
+            exit(4);
+        }
+
+        // run through the existing connections looking for data to read
+        for(i = 0; i <= fdmax; i++) {
+            if (FD_ISSET(i, &read_fds)) { // we got one!!
+                if (i == listener) {
+                    // handle new connections
+                    addrlen = sizeof remoteaddr;
+                    newfd = accept(listener,
+                                   (struct sockaddr *)&remoteaddr,
+                                   &addrlen);
+
+                    if (newfd == -1) {
+                        perror("accept");
+                    } else {
+                        FD_SET(newfd, &master); // add to master set
+                        if (newfd > fdmax) {    // keep track of the max
+                            fdmax = newfd;
+                        }
+                        printf("selectserver: new connection from %s on "
+                                       "socket %d\n",
+                               inet_ntop(remoteaddr.ss_family,
+                                         get_in_addr((struct sockaddr*)&remoteaddr),
+                                         remoteIP, INET6_ADDRSTRLEN),
+                               newfd);
+                    }
+                } else {
+                    // handle data from a client
+//                    if ((nbytes = recv(i, buf, sizeof buf, 0)) <= 0) {
+                    // got error or connection closed by client
+//                        if (nbytes == 0) {
+//                            // connection closed
+//                            printf("selectserver: socket %d hung up\n", i);
+//                        } else {
+//                            perror("recv");
+//                        }
+                    accept_request(i);
+//                        close(i); // bye!
+                    FD_CLR(i, &master); // remove from master set
+//                    }
+// else {
+//                        // we got some data from a client
+//                        if (send(i, buf, nbytes, 0) != nbytes) {
+//                            perror("send");
+//                        }
+//
+//                    }
+                } // END handle data from client
+            } // END got new incoming connection
+        } // END looping through file descriptors
+    } // END for(;;)--and you thought it would never end!
+
 }
