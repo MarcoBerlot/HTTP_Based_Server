@@ -29,6 +29,10 @@
 #define PORT "9999"
 #define SERVER_STRING "Server: Liso/1.0 \r\n"
 
+char *logFile;
+char *www;
+
+
 void accept_request(int);
 void bad_request(int);
 void cat(int, FILE *);
@@ -123,6 +127,39 @@ char *get_filename_ext(const char *filename) {
     char *dot = strrchr(filename, '.');
     if(!dot || dot == filename) return "";
     return dot + 1;
+}
+
+
+/**********************************************************************/
+/* Logging */
+/**********************************************************************/
+void save_logs(const char *s)
+{
+
+    FILE *log_file = fopen(logFile, "a");
+
+    if (log_file == NULL)
+    {
+        printf("Error opening file!\n");
+        exit(1);
+    }
+
+    time_t ltime;
+    struct tm *Tm;
+
+    ltime = time(NULL);
+    Tm = localtime(&ltime);
+
+    fprintf(log_file, "%04d-%02d-%02d %02d:%02d:%02d - ",
+            Tm->tm_year+1900,
+            Tm->tm_mon+1,
+            Tm->tm_mday,
+            Tm->tm_hour-2,
+            Tm->tm_min,
+            Tm->tm_sec
+    );
+    fprintf(log_file, "%s\n", s);
+    fclose(log_file); //closing the log file.
 }
 /**********************************************************************/
 /* Return the informational HTTP headers about a file. */
@@ -227,18 +264,32 @@ char * getType(char *extension){
     char ext[1024];
     static char format[1024];
 
-    if(!(resource = fopen("htdocs/MIME", "r"))){
-        {
-            fprintf(stdout,"Error opening the file\n");
-            return "error";
-        }
-    }
-    while(fscanf(resource,"%s %s",ext,format)!=EOF) {
-        if (strcmp(extension, ext) == 0){
-            return format;
-        }
-    }
+    fprintf(stdout,"Path %s\n",extension);
 
+    if(strcasecmp(extension,"html")==0){
+        fprintf(stdout,"aha\n");
+        return "text/html";
+    }
+    else if(strcasecmp(extension,"css")==0){
+        fprintf(stdout,"aha\n");
+        return "text/css";
+    }
+    else if(strcasecmp(extension,"png")==0){
+        fprintf(stdout,"aha\n");
+        return "image/png";
+    }
+    else if(strcasecmp(extension,"jpg")==0){
+        fprintf(stdout,"aha\n");
+        return "image/jpeg";
+    }
+    else if(strcasecmp(extension,"gif")==0){
+        fprintf(stdout,"aha\n");
+        return "image/gif";
+    }
+    else{
+        fprintf(stdout,"error\n");
+        return "text/html";
+    }
 }
 /**********************************************************************/
 /* A request has caused a call to accept() on the server port to
@@ -247,6 +298,8 @@ char * getType(char *extension){
 /**********************************************************************/
 void accept_request(int client)
 {
+
+
     char buf[1024];
     int numchars;
     char method[255];
@@ -286,11 +339,11 @@ void accept_request(int client)
 
         sprintf(buff, "HTTP/1.1 200 No Content\r\n");
         sprintf(buff, "%sServer: Liso/1.0\r\n", buff);
-        sprintf(buff, "%sDate: %s\r\n", buff, date);
+//        sprintf(buff, "%sDate: %s\r\n", buff, date);
 //        sprintf(buff, "Connection: keep alive\r\n");
 //        if (!context->keep_alive) sprintf(buff, "%sConnection: close\r\n", buff);
         sprintf(buff, "%sContent-Length: 0\r\n", buff);
-        sprintf(buff, "%sContent-Type: text/html\r\n\r\n", buff);
+        sprintf(buff, "%sContent-Type: text/html\r\n", buff);
         send(client, buff, strlen(buff), 0);
 
         return;
@@ -321,7 +374,8 @@ void accept_request(int client)
         }
     }
     fprintf(stdout,"%s\n",url);
-    sprintf(path, "htdocs%s", url);
+//    sprintf(path, "%s%s",www, url);
+    sprintf(path, "www%s", url);
     if (path[strlen(path) - 1] == '/')
         strcat(path, "index.html");
     if (stat(path, &st) == -1) {
@@ -406,7 +460,17 @@ int main(int argc, char **argv)
 
 
     char *portnum;
+
     portnum = argv[1];
+    logFile = argv[2];
+    www = argv[3];
+
+    save_logs("Main Loop Starts");
+    fprintf(stdout,"RECEIVED portnum %s\n",portnum);
+    fprintf(stdout,"RECEIVED logfile %s\n",logFile);
+    fprintf(stdout,"RECEIVED www %s\n",www);
+
+
 
     fd_set master;    // master file descriptor list
     fd_set read_fds;  // temp file descriptor list for select()
@@ -520,6 +584,7 @@ int main(int argc, char **argv)
 //                        } else {
 //                            perror("recv");
 //                        }
+
                     accept_request(i);
 //                        close(i); // bye!
                     FD_CLR(i, &master); // remove from master set
