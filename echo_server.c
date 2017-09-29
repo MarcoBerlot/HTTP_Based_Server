@@ -20,19 +20,14 @@
 #include <sys/wait.h>
 #include <stdlib.h>
 #include <time.h>
-
-
-#define ISspace(x) isspace((int)(x))
 #include <arpa/inet.h>
 
+#define ISspace(x) isspace((int)(x))
 #define BUFSIZE 1024
-#define PORT "9999"
 #define SERVER_STRING "Server: Liso/1.0 \r\n"
 
 char *logFile;
 char *www;
-
-
 void accept_request(int);
 void bad_request(int);
 void cat(int, FILE *);
@@ -48,7 +43,6 @@ void unimplemented(int);
 void error(char *msg);
 char *get_filename_ext(const char *);
 char * getType(char *);
-void get_time(char *date);
 
 /*
  * error - wrapper for perror
@@ -136,19 +130,18 @@ char *get_filename_ext(const char *filename) {
 void save_logs(const char *s)
 {
 
-    FILE *log_file = fopen(logFile, "a");
+    FILE *log_file = fopen(logFile, "a"); //append
 
     if (log_file == NULL)
     {
-        printf("Error opening file!\n");
+        printf("Error accessing the file!\n");
         exit(1);
     }
 
-    time_t ltime;
+    time_t localTime;
     struct tm *Tm;
-
-    ltime = time(NULL);
-    Tm = localtime(&ltime);
+    localTime = time(NULL);
+    Tm = localtime(&localTime);
 
     fprintf(log_file, "%04d-%02d-%02d %02d:%02d:%02d - ",
             Tm->tm_year+1900,
@@ -159,7 +152,7 @@ void save_logs(const char *s)
             Tm->tm_sec
     );
     fprintf(log_file, "%s\n", s);
-    fclose(log_file); //closing the log file.
+    fclose(log_file);
 }
 /**********************************************************************/
 /* Return the informational HTTP headers about a file. */
@@ -256,7 +249,10 @@ void serve_file(int client, const char *filename, char *method)
     }
     fclose(resource);
 }
-
+/********
+ * **************************************************************/
+/* Loops through the URL and gets the appropriate HTTP fileType values */
+/**********************************************************************/
 char * getType(char *extension){
     FILE *resource = NULL;
     int numchars = 1;
@@ -266,24 +262,20 @@ char * getType(char *extension){
 
     fprintf(stdout,"Path %s\n",extension);
 
+
     if(strcasecmp(extension,"html")==0){
-        fprintf(stdout,"aha\n");
         return "text/html";
     }
     else if(strcasecmp(extension,"css")==0){
-        fprintf(stdout,"aha\n");
         return "text/css";
     }
     else if(strcasecmp(extension,"png")==0){
-        fprintf(stdout,"aha\n");
         return "image/png";
     }
     else if(strcasecmp(extension,"jpg")==0){
-        fprintf(stdout,"aha\n");
         return "image/jpeg";
     }
     else if(strcasecmp(extension,"gif")==0){
-        fprintf(stdout,"aha\n");
         return "image/gif";
     }
     else{
@@ -330,22 +322,13 @@ void accept_request(int client)
     if (strcasecmp(method, "POST") == 0){
         fprintf(stdout,"RECEIVED A %s\n",method);
 
-//        cgi = 1;
+        char buf[BUFSIZE];
 
-        char buff[BUFSIZE];
-        char date[BUFSIZE];
-
-        get_time(date);
-
-        sprintf(buff, "HTTP/1.1 200 No Content\r\n");
-        sprintf(buff, "%sServer: Liso/1.0\r\n", buff);
-//        sprintf(buff, "%sDate: %s\r\n", buff, date);
-//        sprintf(buff, "Connection: keep alive\r\n");
-//        if (!context->keep_alive) sprintf(buff, "%sConnection: close\r\n", buff);
-        sprintf(buff, "%sContent-Length: 0\r\n", buff);
-        sprintf(buff, "%sContent-Type: text/html\r\n", buff);
-        send(client, buff, strlen(buff), 0);
-
+        sprintf(buf, "HTTP/1.1 200 No Content\r\n");
+        sprintf(buf, "%sServer: Liso/1.0\r\n", buf);
+        sprintf(buf, "%sContent-Length: 0\r\n", buf);
+        sprintf(buf, "%sContent-Type: text/html\r\n", buf);
+        send(client, buf, strlen(buf), 0);
         return;
     }
     i = 0;
@@ -373,8 +356,9 @@ void accept_request(int client)
             query_string++;
         }
     }
-    fprintf(stdout,"%s\n",url);
+//    fprintf(stdout,"%s\n",url);
 //    sprintf(path, "%s%s",www, url);
+
     sprintf(path, "www%s", url);
     if (path[strlen(path) - 1] == '/')
         strcat(path, "index.html");
@@ -437,15 +421,6 @@ int get_line(int sock, char *buf, int size)
     return(i);
 }
 
-void get_time(char *date)
-{
-    struct tm tm;
-    time_t now;
-    now = time(0);
-    tm = *gmtime(&now);
-    strftime(date, BUFSIZE, "%a, %d %b %Y %H:%M:%S GMT", &tm);
-}
-
 void *get_in_addr(struct sockaddr *sa)
 {
     if (sa->sa_family == AF_INET) {
@@ -457,29 +432,25 @@ void *get_in_addr(struct sockaddr *sa)
 
 int main(int argc, char **argv)
 {
-
-
     char *portnum;
-
+    //variables are dynamically assigned
     portnum = argv[1];
     logFile = argv[2];
     www = argv[3];
 
-    save_logs("Main Loop Starts");
-    fprintf(stdout,"RECEIVED portnum %s\n",portnum);
-    fprintf(stdout,"RECEIVED logfile %s\n",logFile);
-    fprintf(stdout,"RECEIVED www %s\n",www);
+    save_logs("Server Started - Main Loop");
+    fprintf(stdout,"RECEIVED portnum: %s\n",portnum);
+    fprintf(stdout,"RECEIVED logfile: %s\n",logFile);
+    fprintf(stdout,"RECEIVED www path: %s\n",www);
 
-
-
-    fd_set master;    // master file descriptor list
-    fd_set read_fds;  // temp file descriptor list for select()
-    int fdmax;        // maximum file descriptor number
+    fd_set mainFD;    // mainFD file descriptor list
+    fd_set tempFD;  // temp file descriptor list for select()
+    int FDmax;        // maximum file descriptor number
 
     int listener;     // listening socket descriptor
-    int newfd;        // newly accept()ed socket descriptor
-    struct sockaddr_storage remoteaddr; // client address
-    socklen_t addrlen;
+    int newlyAcceptedFD;        // newly accept()ed socket descriptor
+    struct sockaddr_storage clientAddress; // client address
+    socklen_t addressLength;
 
     char buf[256];    // buffer for client data
     int nbytes;
@@ -491,8 +462,8 @@ int main(int argc, char **argv)
 
     struct addrinfo hints, *ai, *p;
 
-    FD_ZERO(&master);    // clear the master and temp sets
-    FD_ZERO(&read_fds);
+    FD_ZERO(&mainFD);    // clear the mainFD and temp sets
+    FD_ZERO(&tempFD);
 
     // get us a socket and bind it
     memset(&hints, 0, sizeof hints);
@@ -524,7 +495,9 @@ int main(int argc, char **argv)
 
     // if we got here, it means we didn't get bound
     if (p == NULL) {
-        fprintf(stderr, "selectserver: failed to bind\n");
+        fprintf(stderr, "Error Message: binding error\n");
+        save_logs("Error Message: binding error");
+
         exit(2);
     }
 
@@ -536,69 +509,52 @@ int main(int argc, char **argv)
         exit(3);
     }
 
-    // add the listener to the master set
-    FD_SET(listener, &master);
+    // add the listener to the mainFD set
+    FD_SET(listener, &mainFD);
 
     // keep track of the biggest file descriptor
-    fdmax = listener; // so far, it's this one
+    FDmax = listener; // so far, it's this one
 
     // main loop
-    for(;;) {
-        read_fds = master; // copy it
-        if (select(fdmax+1, &read_fds, NULL, NULL, NULL) == -1) {
+    while(1) {
+        tempFD = mainFD; // copy it
+        if (select(FDmax+1, &tempFD, NULL, NULL, NULL) == -1) {
             perror("select");
             exit(4);
         }
 
         // run through the existing connections looking for data to read
-        for(i = 0; i <= fdmax; i++) {
-            if (FD_ISSET(i, &read_fds)) { // we got one!!
+        for(i = 0; i <= FDmax; i++) {
+            if (FD_ISSET(i, &tempFD)) { // we got one!!
                 if (i == listener) {
                     // handle new connections
-                    addrlen = sizeof remoteaddr;
-                    newfd = accept(listener,
-                                   (struct sockaddr *)&remoteaddr,
-                                   &addrlen);
+                    addressLength = sizeof clientAddress;
+                    newlyAcceptedFD = accept(listener,
+                                             (struct sockaddr *)&clientAddress,
+                                             &addressLength);
 
-                    if (newfd == -1) {
+                    if (newlyAcceptedFD == -1) {
                         perror("accept");
                     } else {
-                        FD_SET(newfd, &master); // add to master set
-                        if (newfd > fdmax) {    // keep track of the max
-                            fdmax = newfd;
+                        FD_SET(newlyAcceptedFD, &mainFD); // add to mainFD set
+                        if (newlyAcceptedFD > FDmax) {    // keep track of the max
+                            FDmax = newlyAcceptedFD;
                         }
                         printf("selectserver: new connection from %s on "
                                        "socket %d\n",
-                               inet_ntop(remoteaddr.ss_family,
-                                         get_in_addr((struct sockaddr*)&remoteaddr),
+                               inet_ntop(clientAddress.ss_family,
+                                         get_in_addr((struct sockaddr*)&clientAddress),
                                          remoteIP, INET6_ADDRSTRLEN),
-                               newfd);
+                               newlyAcceptedFD);
+                        save_logs("INFO Message: new connection started");
+
                     }
                 } else {
-                    // handle data from a client
-//                    if ((nbytes = recv(i, buf, sizeof buf, 0)) <= 0) {
-                    // got error or connection closed by client
-//                        if (nbytes == 0) {
-//                            // connection closed
-//                            printf("selectserver: socket %d hung up\n", i);
-//                        } else {
-//                            perror("recv");
-//                        }
-
                     accept_request(i);
-//                        close(i); // bye!
-                    FD_CLR(i, &master); // remove from master set
-//                    }
-// else {
-//                        // we got some data from a client
-//                        if (send(i, buf, nbytes, 0) != nbytes) {
-//                            perror("send");
-//                        }
-//
-//                    }
-                } // END handle data from client
-            } // END got new incoming connection
-        } // END looping through file descriptors
-    } // END for(;;)--and you thought it would never end!
+                    FD_CLR(i, &mainFD);
+                }
+            }
+        }
+    }
 
 }
