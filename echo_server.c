@@ -105,14 +105,19 @@ void not_found(int client)
 /**********************************************************************/
 void cat(int client, FILE *resource)
 {
-    char buf[1024];
+    char buffer[1024];
+    size_t s1=1024;
+    int fd=fileno(resource);
 
-    fgets(buf, sizeof(buf), resource);
-    while (!feof(resource))
-    {
-        send(client, buf, strlen(buf), 0);
-        fgets(buf, sizeof(buf), resource);
+
+    int nread;
+    while(1){
+        if((nread=read(fd,buffer,1024))<=0){
+            break;
+        }
+        send(client, buffer, nread, 0);
     }
+
 }
 /**********************************************************************/
 /* Get extension of a file */
