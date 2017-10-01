@@ -97,11 +97,7 @@ void not_found(int client)
     send(client, buf, strlen(buf), 0);
 }
 /**********************************************************************/
-/* Put the entire contents of a file out on a socket.  This function
- * is named after the UNIX "cat" command, because it might have been
- * easier just to do something like pipe, fork, and exec("cat").
- * Parameters: the client socket descriptor
- *             FILE pointer for the file to cat */
+/* Send the entire content of a file trough a socket
 /**********************************************************************/
 void cat(int client, FILE *resource)
 {
@@ -160,9 +156,7 @@ void save_logs(const char *s)
     fclose(log_file);
 }
 /**********************************************************************/
-/* Return the informational HTTP headers about a file. */
-/* Parameters: the socket to print the headers on
- *             the name of the file */
+/* Return the informations to fill an HTTP header
 /**********************************************************************/
 void headers(int client, const char *filename, int size)
 {
@@ -225,9 +219,6 @@ void echo(int client)
 /**********************************************************************/
 /* Send a regular file to the client.  Use headers, and report
  * errors to client if they occur.
- * Parameters: a pointer to a file structure produced from the socket
- *              file descriptor
- *             the name of the file to serve */
 /**********************************************************************/
 void serve_file(int client, const char *filename, char *method)
 {

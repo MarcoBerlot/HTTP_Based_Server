@@ -1,0 +1,10 @@
+In this text file the main functions of the LISOD server are explained:
+
+Unimplemented: return code 501
+Not found: return 404
+Cat: Send the entire content of a file trough a socket trough the system call read()
+get_filename_ext: Get extension of a file
+headers: Return the informations to fill an HTTP header, such as Content-type, Content-length and date.
+serve_file: Send a regular file to the client.  Use headers, and report errors to client if they occur. The function checks if the file exists, if it's really a file and if the user has the permission to read it
+getType: Loops through the URL and gets the appropriate HTTP fileType values
+Accept request: A request has caused a call to accept() on the server port to return.  Process the request appropriately. If will understand wether it's a POST a HEAD or a GET.
