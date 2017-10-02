@@ -1,0 +1,5 @@
+
+
+Test: Once we have finished the project, we have tested the HTTP server both manually and automatically. We hosted to server on local machines as well as inside docker images. We used PostMan, Safari, Chrome and Telnet to test server and client connections. To test concurrent requets, we tested by leveraging the test script to run 1024 requets at the same time.  
+
+Vulnerabilities: The Post method is currently accepting any type. Therefore, the attackers can upload bad scripts to corrupt the server. Furthermore, we do not limit the input length. The attacker can also attack with buffer overflow by adding malicious code at the end of the input fields. Lastly, the attacker can open a lot of sessions (>1024) which will stop the server from functioning properly.

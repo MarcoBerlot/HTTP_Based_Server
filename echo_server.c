@@ -245,8 +245,7 @@ void serve_file(int client, const char *filename, char *method)
     }
     fclose(resource);
 }
-/********
- * **************************************************************/
+/***********************************************************************/
 /* Loops through the URL and gets the appropriate HTTP fileType values */
 /**********************************************************************/
 char * getType(char *extension){
@@ -439,47 +438,48 @@ int main(int argc, char **argv)
     fprintf(stdout,"RECEIVED logfile: %s\n",logFile);
     fprintf(stdout,"RECEIVED www path: %s\n",www);
 
-    fd_set mainFD;    // mainFD file descriptor list
-    fd_set tempFD;  // temp file descriptor list for select()
-    int FDmax;        // maximum file descriptor number
 
-    int listener;     // listening socket descriptor
-    int newlyAcceptedFD;        // newly accept()ed socket descriptor
-    struct sockaddr_storage clientAddress; // client address
+
+    /**********************************************************************/
+    /* Code in courtesy of Beej Guide on select */
+    /**********************************************************************/
+
+    fd_set mainFD;  // main FD list
+    fd_set tempFD;  // temp FD list
+    int FDmax;      // max FD int
+
+    int listener;               //listening socket FD
+    int newlyAcceptedFD;        // newest accepted socket FD
+    struct sockaddr_storage clientAddress;
     socklen_t addressLength;
 
-    char buf[256];    // buffer for client data
-    int nbytes;
 
-    char remoteIP[INET6_ADDRSTRLEN];
+    char clientIP[INET6_ADDRSTRLEN];
 
-    int yes=1;        // for setsockopt() SO_REUSEADDR, below
-    int i, j, rv;
+    int status=1;        // for setsockopt() SO_REUSEADDR, below
+    int i, j, sckt;
 
-    struct addrinfo hints, *ai, *p;
+    struct addrinfo instanceInfo, *ai, *p;
 
-    FD_ZERO(&mainFD);    // clear the mainFD and temp sets
-    FD_ZERO(&tempFD);
+    FD_ZERO(&mainFD);    // clear the mainFD
+    FD_ZERO(&tempFD);    // clear the tempFD
 
-    // get us a socket and bind it
-    memset(&hints, 0, sizeof hints);
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_flags = AI_PASSIVE;
-    if ((rv = getaddrinfo(NULL, portnum, &hints, &ai)) != 0) {
-        fprintf(stderr, "selectserver: %s\n", gai_strerror(rv));
+    memset(&instanceInfo, 0, sizeof instanceInfo); // clear data stored under instanceInfo
+
+    instanceInfo.ai_family = AF_UNSPEC;
+    instanceInfo.ai_socktype = SOCK_STREAM;
+    instanceInfo.ai_flags = AI_PASSIVE;
+
+
+    if ((sckt = getaddrinfo(NULL, portnum, &instanceInfo, &ai)) != 0) {
         exit(1);
     }
 
 
     for(p = ai; p != NULL; p = p->ai_next) {
         listener = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
-        if (listener < 0) {
-            continue;
-        }
 
-        // lose the pesky "address already in use" error message
-        setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
+        setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &status, sizeof(int));
 
         if (bind(listener, p->ai_addr, p->ai_addrlen) < 0) {
             close(listener);
@@ -489,41 +489,38 @@ int main(int argc, char **argv)
         break;
     }
 
-    // if we got here, it means we didn't get bound
+    //report binding error
     if (p == NULL) {
         fprintf(stderr, "Error Message: binding error\n");
         save_logs("Error Message: binding error");
 
-        exit(2);
+        exit(1);
     }
 
-    freeaddrinfo(ai); // all done with this
+    freeaddrinfo(ai); // free when finished
 
     // listen
-    if (listen(listener, 10) == -1) {
+    if (listen(listener, 20) == -1) {
         perror("listen");
-        exit(3);
+        exit(1);
     }
 
-    // add the listener to the mainFD set
-    FD_SET(listener, &mainFD);
+    FD_SET(listener, &mainFD); // register the listener to the mainFD
 
-    // keep track of the biggest file descriptor
-    FDmax = listener; // so far, it's this one
+    FDmax = listener; // get the max FD which is the listener
 
-    // main loop
     while(1) {
-        tempFD = mainFD; // copy it
+        tempFD = mainFD;
+
         if (select(FDmax+1, &tempFD, NULL, NULL, NULL) == -1) {
+            save_logs("server: closed");
             perror("select");
-            exit(4);
+            exit(1);
         }
 
-        // run through the existing connections looking for data to read
         for(i = 0; i <= FDmax; i++) {
-            if (FD_ISSET(i, &tempFD)) { // we got one!!
+            if (FD_ISSET(i, &tempFD)) {
                 if (i == listener) {
-                    // handle new connections
                     addressLength = sizeof clientAddress;
                     newlyAcceptedFD = accept(listener,
                                              (struct sockaddr *)&clientAddress,
@@ -532,22 +529,22 @@ int main(int argc, char **argv)
                     if (newlyAcceptedFD == -1) {
                         perror("accept");
                     } else {
-                        FD_SET(newlyAcceptedFD, &mainFD); // add to mainFD set
-                        if (newlyAcceptedFD > FDmax) {    // keep track of the max
+                        FD_SET(newlyAcceptedFD, &mainFD);
+                        if (newlyAcceptedFD > FDmax) {    //update max
                             FDmax = newlyAcceptedFD;
                         }
-                        printf("selectserver: new connection from %s on "
+                        printf("server: new connection from %s on "
                                        "socket %d\n",
                                inet_ntop(clientAddress.ss_family,
                                          get_in_addr((struct sockaddr*)&clientAddress),
-                                         remoteIP, INET6_ADDRSTRLEN),
+                                         clientIP, INET6_ADDRSTRLEN),
                                newlyAcceptedFD);
-                        save_logs("INFO Message: new connection started");
+                        save_logs("server: new connection started");
 
                     }
                 } else {
                     accept_request(i);
-                    FD_CLR(i, &mainFD);
+                    FD_CLR(i, &mainFD); //deregister
                 }
             }
         }
